@@ -1,0 +1,1971 @@
+        -:    0:Source:ymirdb.c
+        -:    0:Graph:./ymirdb.gcno
+        -:    0:Data:./ymirdb.gcda
+        -:    0:Runs:208
+        -:    0:Programs:1
+        -:    1:/**
+        -:    2: * comp2017 - assignment 2
+        -:    3: * Daniel Chorev
+        -:    4: * dcho3009
+        -:    5: */
+        -:    6:
+        -:    7:#include <stdio.h>
+        -:    8:#include <stdlib.h>
+        -:    9:#include <string.h>
+        -:   10:#include <strings.h>
+        -:   11:#include <stdbool.h>
+        -:   12:
+        -:   13:#include <ctype.h>
+        -:   14:
+        -:   15:#include "ymirdb.h"
+        -:   16:
+        -:   17:// We recommend that you design your program to be
+        -:   18:// modular where each function performs a small task
+        -:   19://
+        -:   20:// e.g.
+        -:   21://
+        -:   22:// command_bye
+        -:   23:// command_help
+        -:   24:// ...
+        -:   25:// entry_add
+        -:   26:// entry_delete
+        -:   27:// ...
+        -:   28://
+        -:   29:
+        -:   30://Function to free all entries in a current data base state - as passed in as a parameter.
+      512:   31:void free_all_entries(entry * cur_state) {
+        -:   32:    // Check if the database head has been initialised before clearing any further entries.
+      512:   33:	if (cur_state->is_initialised) {
+        -:   34:        //Free the first entry.
+      491:   35:		free(cur_state->values);
+        -:   36:		
+      491:   37:		if(cur_state->next != NULL) {
+      288:   38:            cur_state = cur_state->next;
+        -:   39:            
+      288:   40:		    free(cur_state->prev);
+      288:   41:        } else{
+      203:   42:            free(cur_state);
+      203:   43:            return;
+        -:   44:        }
+        -:   45:		//Free any further entries until reaching the end.
+      432:   46:		while (cur_state->next != NULL) {
+      144:   47:			free(cur_state->values);
+        -:   48:
+      144:   49:			cur_state = cur_state->next;
+        -:   50:			
+      144:   51:			free(cur_state->prev);
+        -:   52:		}
+      288:   53:		free(cur_state->values);
+        -:   54:		
+      288:   55:		free(cur_state);
+      288:   56:	} else {
+       21:   57:		free(cur_state);
+        -:   58:	}
+      309:   59:	return;
+      512:   60:}
+        -:   61:
+        -:   62://Function for bye command
+      208:   63:void command_bye(snapshot * snaps, entry * cur_state) {
+      208:   64:	printf("bye\n");
+        -:   65:
+        -:   66:	//Free the current state.
+      208:   67:	free_all_entries(cur_state);
+        -:   68:
+        -:   69:	//Free all snapshots and their entries.
+      208:   70:	if (snaps->is_initialised) {
+      112:   71:		while (snaps->next != NULL) {
+       32:   72:			free_all_entries(snaps->entries);
+       32:   73:			snaps = snaps->next;
+       32:   74:			free(snaps->prev);
+        -:   75:		}
+       80:   76:		free_all_entries(snaps->entries);
+       80:   77:		free(snaps);
+        -:   78:
+       80:   79:	} else {
+      128:   80:		free(snaps);
+        -:   81:	}
+        -:   82:	
+        -:   83:	//Exit program
+      208:   84:	exit(1);
+        -:   85:}
+        -:   86:
+    #####:   87:void command_help() {
+    #####:   88:	printf("%s\n", HELP);
+    #####:   89:}
+        -:   90:
+        -:   91://Function for set command.
+      617:   92:bool command_set(const char line[MAX_LINE], entry * db_head) {
+        -:   93:
+        -:   94:	//Create duplicate of the input line to store original pointer.
+      617:   95:	char * sep_line = calloc(strlen(line)+1,1);
+      617:   96:	char * original_line_pointer = sep_line;
+      617:   97:	strcpy(sep_line,line);
+        -:   98:
+        -:   99:	//Extract key from the line.
+      617:  100:	strsep(&sep_line, " ");
+      617:  101:	char * key = strsep(&sep_line, " ");
+        -:  102:
+        -:  103:	//Initialise other variables.
+        -:  104:	char * cur_elem;
+      617:  105:	entry * update_existing_key = NULL;
+        -:  106:
+        -:  107:	
+        -:  108:	// Check if key exists.		
+      617:  109:	if(isalpha(key[0])== false){
+       14:  110:		printf("no such key, must start with an alphabetic character.\n\n");
+       14:  111:		free(original_line_pointer);
+       14:  112:		return false;
+        -:  113:	}
+        -:  114:	
+        -:  115:	//Check if key already exists.
+      603:  116:	int i = 0;
+      603:  117:	update_existing_key = command_get(line, db_head, false,false);
+        -:  118:
+        -:  119:	//Update existing key
+      603:  120:	if (update_existing_key != NULL){
+        -:  121:		
+        -:  122:		//Key already exists:
+        -:  123:		//Initialise variables.
+      139:  124:		bool is_simple = true;
+        -:  125:		element elements[MAX_LINE];
+        -:  126:
+        -:  127:		//Read each element in input line until end (NULL)
+      315:  128:		while ((cur_elem = strsep(&sep_line, " ")) != NULL) {
+        -:  129:			//Check for Simple or general entry.
+      187:  130:			if (isdigit(*cur_elem) || cur_elem[0] == '-') {
+      112:  131:				elements[i].type = INTEGER;
+      112:  132:				elements[i].value = atoi(cur_elem);
+      112:  133:				i++;
+        -:  134:				
+      112:  135:			} else {
+        -:  136:				//If it is a general element.
+        -:  137:
+        -:  138:				//Create Get command for the element.
+       75:  139:				char command1[MAX_LINE] = "GET ";
+       75:  140:				strcat(command1,cur_elem);
+        -:  141:
+        -:  142:				//Use get command to check if the entry key exists.
+       75:  143:				entry * found_entry = command_get(command1,db_head,false,false);
+        -:  144:
+        -:  145:				//If it does exist.
+       75:  146:				if (found_entry != NULL ) {
+        -:  147:					//Check if trying to add circular reference to itself.
+       64:  148:					if (strcmp(found_entry->key, key) == 0) {
+    #####:  149:						printf("not permitted\n\n");
+    #####:  150:                        free(original_line_pointer);
+    #####:  151:						return false;
+        -:  152:					}
+        -:  153:
+        -:  154:					//Add element to array.
+       64:  155:					is_simple = false;
+       64:  156:					elements[i].type = ENTRY;
+       64:  157:					elements[i].entry = found_entry;
+        -:  158:					
+        -:  159:					
+       64:  160:				} else {
+        -:  161:					//No such key exists.
+       11:  162:					printf("no such key\n\n");
+       11:  163:					free(original_line_pointer);
+       11:  164:					return false;
+        -:  165:				}
+       64:  166:				i++;
+        -:  167:
+        -:  168:			}
+        -:  169:		}
+        -:  170:		//Free old values.
+      128:  171:		free(update_existing_key->values);
+        -:  172:
+      128:  173:		update_existing_key->is_simple = is_simple;
+        -:  174:
+        -:  175:		//Add values
+      128:  176:		element * e = malloc(sizeof(element)*i);
+        -:  177:
+      304:  178:		for (int j = 0; j < i; j++){
+      176:  179:			(e+j)->type = elements[j].type;
+      176:  180:			if (elements[j].type == INTEGER){
+      112:  181:				(e+j)->value = elements[j].value;	
+      112:  182:			} else {
+       64:  183:				(e+j)->entry = elements[j].entry;	
+        -:  184:			}
+      176:  185:		}
+        -:  186:
+      128:  187:		update_existing_key->values = e;
+      128:  188:		update_existing_key->length = i;
+        -:  189:
+      128:  190:		printf("ok\n\n");
+        -:  191:
+        -:  192:
+        -:  193:
+      592:  194:	} else if (db_head->is_initialised == false){
+        -:  195:		//Case if adding first element in database state
+        -:  196:		//Similar as previous if block, no references allowed.
+        -:  197:
+      230:  198:		db_head->is_simple = true;
+        -:  199:		element elements[MAX_LINE];
+        -:  200:		
+        -:  201:		
+      689:  202:		while ((cur_elem = strsep(&sep_line, " ")) != NULL) {
+      486:  203:			if (isdigit(*cur_elem) || cur_elem[0] == '-') {
+      459:  204:				elements[i].type = INTEGER;
+      459:  205:				elements[i].value = atoi(cur_elem);
+      459:  206:				i++;
+        -:  207:				
+      459:  208:			} else {
+        -:  209:
+       27:  210:				printf("no such key\n\n");
+       27:  211:                free(original_line_pointer);
+       27:  212:				return false;
+        -:  213:				
+        -:  214:			}
+        -:  215:		}
+        -:  216:		
+        -:  217:
+        -:  218:		//Same defaults and setting new values to entry
+      203:  219:		db_head->forward_size = 0;
+      203:  220:		db_head->length = i;
+      203:  221:		element * e = malloc(sizeof(element)*i);
+        -:  222:
+      662:  223:		for (int j = 0; j < i; j++){
+      459:  224:			(e+j)->type = elements[j].type;
+      459:  225:			if (elements[j].type == INTEGER){
+      459:  226:				(e+j)->value = elements[j].value;	
+      459:  227:			} else {
+    #####:  228:				(e+j)->entry = elements[j].entry;	
+        -:  229:			}
+        -:  230:			
+      459:  231:		}
+        -:  232:
+      203:  233:		strcpy(db_head->key,key);
+      203:  234:		db_head->is_initialised = true;
+      203:  235:		db_head->prev = NULL;
+      203:  236:		db_head->next = NULL;
+      203:  237:		db_head->values = e;
+        -:  238:
+      203:  239:		printf("ok\n\n");
+        -:  240:
+      203:  241:	} else {
+        -:  242:		//Case for adding to existing initialised database
+        -:  243:		//Find end of linked list to add new entry
+        -:  244:		entry * last_key;
+      234:  245:		last_key = db_head;
+      346:  246:		while (last_key->next != NULL){
+      112:  247:			last_key = last_key->next;
+        -:  248:		}
+        -:  249:
+        -:  250:		//New entry
+      234:  251:		bool is_simple = true;
+        -:  252:		element elements[MAX_LINE];
+        -:  253:
+      794:  254:		while ((cur_elem = strsep(&sep_line, " ")) != NULL) {
+      570:  255:			if (isdigit(*cur_elem) || cur_elem[0] == '-') {
+      416:  256:				elements[i].type = INTEGER;
+      416:  257:				elements[i].value = atoi(cur_elem);
+      416:  258:				i++;
+        -:  259:				
+      416:  260:			} else {
+      154:  261:				char command1[MAX_LINE] = "GET ";
+      154:  262:				strcat(command1,cur_elem);
+        -:  263:				
+      154:  264:				entry * found_entry = command_get(command1,db_head,false,false);
+        -:  265:
+        -:  266:
+      154:  267:				if (found_entry != NULL) {
+      144:  268:					is_simple = false;
+      144:  269:					elements[i].type = ENTRY;
+      144:  270:					elements[i].entry = found_entry;
+        -:  271:					
+      144:  272:				} else {
+       10:  273:					printf("no such key\n\n");
+       10:  274:                    free(original_line_pointer);
+       10:  275:					return false;
+        -:  276:				}
+      144:  277:				i++;
+        -:  278:				
+        -:  279:			}
+        -:  280:		}
+        -:  281:
+      224:  282:		entry * new_entry = malloc(sizeof(entry));
+      224:  283:		strcpy(new_entry->key,key);
+      224:  284:		new_entry->is_simple = is_simple;
+        -:  285:
+      224:  286:		element * e = malloc(sizeof(element)*i);
+        -:  287:
+      784:  288:		for (int j = 0; j < i; j++){
+      560:  289:			(e+j)->type = elements[j].type;
+      560:  290:			if (elements[j].type == INTEGER){
+      416:  291:				(e+j)->value = elements[j].value;	
+      416:  292:			} else {
+      144:  293:				(e+j)->entry = elements[j].entry;	
+        -:  294:			}
+      560:  295:		}
+        -:  296:
+      224:  297:		new_entry->values = e;
+      224:  298:		new_entry->is_initialised = true;
+      224:  299:		new_entry->length = i;
+      224:  300:		new_entry->prev = last_key;
+      224:  301:		new_entry->next = NULL;
+      224:  302:		last_key->next = new_entry;
+        -:  303:		
+      224:  304:		printf("ok\n\n");
+        -:  305:	}
+      555:  306:    free(original_line_pointer);
+      555:  307:	return true;
+      617:  308:}
+        -:  309:
+        -:  310://Function for get command.
+     6144:  311:entry * command_get(const char line[MAX_LINE], entry * db_head, bool display, bool newline) {
+        -:  312:	//Check there are entries in the database.
+     6144:  313:	if (db_head == NULL || db_head->is_initialised == false){
+      500:  314:		if (display == true) {
+       32:  315:			printf("no such key\n\n");
+       32:  316:		}		
+      500:  317:		return NULL;
+        -:  318:	}
+        -:  319:	//Duplicate input line
+     5644:  320:	char * sep_line = calloc(strlen(line)+1, 1);
+     5644:  321:	char * original_line_pointer = sep_line;
+     5644:  322:	strncpy(sep_line,line,strlen(line));
+        -:  323:	
+        -:  324:	//Extract key from line
+     5644:  325:	strsep(&sep_line, " ");
+     5644:  326:	char * key = strsep(&sep_line, " ");
+        -:  327:	
+     5644:  328:	if (key == NULL) {
+        9:  329:		free(original_line_pointer);
+        9:  330:		return NULL;
+        -:  331:	}
+        -:  332:
+        -:  333:	//Search for entry
+        -:  334:	entry * entry_search;
+     5635:  335:	entry_search = db_head;
+    10362:  336:	while (strcmp(entry_search->key, key) != 0 && entry_search->next != NULL){
+     4727:  337:		entry_search = entry_search->next;
+        -:  338:	}
+        -:  339:	
+        -:  340:	//If NULL - entry doesnt exist. Else, print entry contents.
+     5635:  341:	if (strcmp(entry_search->key, key) != 0){
+      418:  342:		if (display == true) {
+       16:  343:			printf("no such key\n\n");
+       16:  344:		}
+      418:  345:        free(original_line_pointer);
+      418:  346:		return NULL;
+        -:  347:	} else {
+        -:  348:		//Print entry values.
+     5217:  349:		if (display == true) {
+      232:  350:			printf("[");
+      232:  351:		}
+    14995:  352:		for (int i = 0; i < entry_search->length; i++){
+     9778:  353:			if (display == true) {
+        -:  354:				//Check for simple or general value type and print with format accordingly.
+      512:  355:				if ((entry_search->values + i)->type == INTEGER){
+        -:  356:
+      472:  357:					if (i == entry_search->length - 1){
+      232:  358:						printf("%d", (entry_search->values + i)->value);
+      232:  359:					} else {
+      240:  360:						printf("%d ", (entry_search->values + i)->value);
+        -:  361:					}
+        -:  362:
+      472:  363:				} else {
+        -:  364:
+       40:  365:					if (i == entry_search->length - 1){
+    #####:  366:						printf("%s", (entry_search->values + i)->entry->key);
+    #####:  367:					} else {
+       40:  368:						printf("%s ", (entry_search->values + i)->entry->key);
+        -:  369:					}
+        -:  370:
+        -:  371:				}
+      512:  372:			}
+     9778:  373:		}
+     5217:  374:		if (display == true && newline == true) {
+      232:  375:			printf("]\n\n");
+      232:  376:		}
+     5217:  377:        free(original_line_pointer);
+     5217:  378:		return entry_search;
+        -:  379:	}
+     6144:  380:}
+        -:  381:
+        -:  382://Function for push command
+       29:  383:bool command_push(const char line[MAX_LINE], entry * db_head) {
+        -:  384:	//Duplicate input line
+       29:  385:	char * sep_line = calloc(strlen(line)+1, 1);
+       29:  386:	char * original_line_pointer = sep_line;
+       29:  387:	strncpy(sep_line,line,strlen(line));
+        -:  388:
+        -:  389:	//Skip to values to push
+       29:  390:	strsep(&sep_line, " ");
+       29:  391:	strsep(&sep_line, " ");
+        -:  392:	
+        -:  393:	char * cur_elem;
+       29:  394:	entry * key_to_push = NULL;
+        -:  395:
+        -:  396:	//Find the key to push to.
+       29:  397:	key_to_push = command_get(line, db_head, false,false);
+        -:  398:
+        -:  399:	//No key found
+       29:  400:	if (key_to_push == NULL) {
+        7:  401:		printf("no such key\n\n");
+        7:  402:        free(original_line_pointer);
+        7:  403:		return false;
+        -:  404:	}
+        -:  405:
+        -:  406:	//Initialise variables
+       22:  407:	int i = 0;
+       22:  408:	bool is_simple = key_to_push->is_simple;
+        -:  409:	element elements[MAX_LINE];
+        -:  410:	char * forwards[MAX_KEY];
+       22:  411:	int num_forwards = 0;
+        -:  412:
+       44:  413:	while ((cur_elem = strsep(&sep_line, " ")) != NULL) {
+        -:  414:		//Read elements from line similarly to the get function.
+       22:  415:		if (isdigit(*cur_elem) || cur_elem[0] == '-') {
+       16:  416:			elements[i].type = INTEGER;
+       16:  417:			elements[i].value = atoi(cur_elem);
+       16:  418:			i++;
+        -:  419:			
+       16:  420:		} else {
+        6:  421:			char command1[MAX_LINE] = "GET ";
+        6:  422:			strcat(command1,cur_elem);
+        -:  423:				
+        6:  424:			entry * found_entry = command_get(command1,db_head,false,false);
+        -:  425:
+        6:  426:			if (found_entry != NULL) {
+        6:  427:				is_simple = false;
+        6:  428:				elements[i].type = ENTRY;
+        6:  429:				elements[i].entry = found_entry;
+        -:  430:
+        6:  431:				*(forwards + num_forwards) = found_entry->key;
+        6:  432:				num_forwards++;
+        6:  433:			} else {
+    #####:  434:				printf("no such entry\n\n");
+    #####:  435:                free(original_line_pointer);
+    #####:  436:				return false;
+        -:  437:			}
+        6:  438:			i++;
+        -:  439:		}
+        -:  440:	}
+        -:  441:	//Create new elements linked list
+       22:  442:	element * e = malloc(sizeof(element)*(i + key_to_push->length));
+        -:  443:
+        -:  444:
+        -:  445:	//First add new elements to new element linked list
+       44:  446:	for (int j = 0; j < i; j++){
+       22:  447:		(e+j)->type = elements[i-j-1].type;
+       22:  448:		if (elements[i-j-1].type == INTEGER){
+       16:  449:			(e+j)->value = elements[i-j-1].value;	
+       16:  450:		} else {
+        6:  451:			(e+j)->entry = elements[i-j-1].entry;	
+        -:  452:		}
+       22:  453:	}
+        -:  454:	//Now add the existing elements to the end.
+       56:  455:	for (int j = 0; j < key_to_push->length; j++){
+       34:  456:		(e+j+i)->type = (key_to_push->values + j)->type;
+       34:  457:		if ((key_to_push->values + j)->type == INTEGER){
+       28:  458:			(e+j+i)->value = (key_to_push->values + j)->value;	
+       28:  459:		} else {
+        6:  460:			(e+j+i)->entry = (key_to_push->values + j)->entry;	
+        -:  461:		}
+        -:  462:		
+       34:  463:	}
+        -:  464:	
+       22:  465:	key_to_push->is_simple = is_simple;
+       22:  466:	free(key_to_push->values);
+       22:  467:	key_to_push->values = e;
+       22:  468:	key_to_push->length += i;
+        -:  469:
+       22:  470:	printf("ok\n\n");
+       22:  471:	free(original_line_pointer);
+       22:  472:	return true;
+        -:  473:
+       29:  474:}
+        -:  475:
+        -:  476://Function for append command
+       45:  477:bool command_append(const char line[MAX_LINE], entry * db_head) {
+        -:  478:	//Duplicate input line
+       45:  479:	char * sep_line = calloc(strlen(line)+1, 1);
+       45:  480:	char * original_line_pointer = sep_line;
+       45:  481:	strncpy(sep_line,line,strlen(line));
+        -:  482:
+        -:  483:	//Skip to values to be appended.
+       45:  484:	strsep(&sep_line, " ");
+       45:  485:	strsep(&sep_line, " ");
+        -:  486:	
+        -:  487:	char * cur_elem;
+       45:  488:	entry * key_to_append = NULL;
+        -:  489:
+       45:  490:	key_to_append = command_get(line, db_head, false,false);
+        -:  491:
+       45:  492:	if (key_to_append == NULL) {
+        7:  493:		printf("no such key\n\n");
+        7:  494:        free(original_line_pointer);
+        7:  495:		return false;
+        -:  496:	}
+       38:  497:	int i = 0;
+        -:  498:
+       38:  499:	bool is_simple = key_to_append->is_simple;
+        -:  500:	element elements[MAX_LINE];
+        -:  501:
+       76:  502:	while ((cur_elem = strsep(&sep_line, " ")) != NULL) {
+       38:  503:		if (isdigit(*cur_elem) || cur_elem[0] == '-') {
+       32:  504:			elements[i].type = INTEGER;
+       32:  505:			elements[i].value = atoi(cur_elem);
+       32:  506:			i++;
+        -:  507:			
+       32:  508:		} else {
+        6:  509:			char command1[MAX_LINE] = "GET ";
+        6:  510:			strcat(command1,cur_elem);
+        -:  511:				
+        6:  512:			entry * found_entry = command_get(command1,db_head,false,false);
+        -:  513:
+        6:  514:			if (found_entry != NULL) {
+        6:  515:				is_simple = false;
+        6:  516:				elements[i].type = ENTRY;
+        6:  517:				elements[i].entry = found_entry;
+        -:  518:					
+        6:  519:			} else {
+    #####:  520:				printf("no such entry\n\n");
+    #####:  521:                free(original_line_pointer);
+    #####:  522:				return false;
+        -:  523:			}
+        6:  524:			i++;
+        -:  525:		}
+        -:  526:	}
+        -:  527:	
+       38:  528:	element * e = malloc(sizeof(element)*(i + key_to_append->length));
+        -:  529:	
+        -:  530:	//Add existing values first
+      142:  531:	for (int j = 0; j < key_to_append->length; j++){
+      104:  532:		(e+j)->type = (key_to_append->values + j)->type;
+      104:  533:		if ((key_to_append->values + j)->type == INTEGER){
+       92:  534:			(e+j)->value = (key_to_append->values + j)->value;	
+       92:  535:		} else {
+       12:  536:			(e+j)->entry = (key_to_append->values + j)->entry;	
+        -:  537:		}
+        -:  538:		
+      104:  539:	}
+        -:  540:
+        -:  541:	//Add new elements
+       76:  542:	for (int j = 0; j < i; j++){
+       38:  543:		(e+j+key_to_append->length)->type = elements[j].type;
+       38:  544:		if (elements[j].type == INTEGER){
+       32:  545:			(e+j+key_to_append->length)->value = elements[j].value;	
+       32:  546:		} else {
+        6:  547:			(e+j+key_to_append->length)->entry = elements[j].entry;	
+        -:  548:		}
+       38:  549:	}
+       38:  550:	key_to_append->is_simple = is_simple;
+        -:  551:
+       38:  552:	free(key_to_append->values);
+       38:  553:	key_to_append->values = e;
+       38:  554:	key_to_append->length += i;
+        -:  555:
+       38:  556:	printf("ok\n\n");
+       38:  557:    free(original_line_pointer);
+       38:  558:	return true;
+        -:  559:
+       45:  560:}
+        -:  561:
+        -:  562://Function for pick command
+       32:  563:bool command_pick(const char line[MAX_LINE], entry * db_head) {
+        -:  564:	//Duplicate input line
+       32:  565:	char * sep_line = calloc(strlen(line)+1, 1);
+       32:  566:	char * original_line_pointer = sep_line;
+       32:  567:	strncpy(sep_line,line,strlen(line));
+        -:  568:
+        -:  569:	//skip to index to pick
+       32:  570:	strsep(&sep_line, " ");
+       32:  571:	strsep(&sep_line, " ");
+       32:  572:	int print_index = atoi(strsep(&sep_line, " ")) - 1;
+        -:  573:
+        -:  574:	//Find entry to pick from.
+       32:  575:	entry * entry_to_print = command_get(line,db_head,false,false);
+        -:  576:
+        -:  577:	//Check edge cases
+       32:  578:	if (entry_to_print == NULL) {
+       16:  579:		printf("no such key\n\n");
+       16:  580:        free(original_line_pointer);
+       16:  581:		return false;
+        -:  582:
+       16:  583:	} else if (entry_to_print-> length <= print_index) {
+    #####:  584:		printf("index out of range\n\n");
+    #####:  585:        free(original_line_pointer);
+    #####:  586:		return false;
+        -:  587:
+        -:  588:	} else {
+        -:  589:		//Print value.
+       16:  590:		if ((entry_to_print->values + print_index)->type == INTEGER){
+       16:  591:			printf("%d\n\n", (entry_to_print->values + print_index)->value);	
+       16:  592:		} else {
+    #####:  593:			printf("%s\n\n", (entry_to_print->values + print_index)->entry->key);
+        -:  594:		}
+        -:  595:		
+       16:  596:        free(original_line_pointer);
+       16:  597:		return true;
+        -:  598:	}
+        -:  599:
+       32:  600:}
+        -:  601:
+        -:  602://Function for pluck command
+       32:  603:bool command_pluck(const char line[MAX_LINE], entry * db_head) {
+        -:  604:	//Duplicate input line
+       32:  605:	char * sep_line = calloc(strlen(line)+1, 1);
+       32:  606:	char * original_line_pointer = sep_line;
+       32:  607:	strncpy(sep_line,line,strlen(line));
+        -:  608:
+        -:  609:	//Get index to pluck
+       32:  610:	strsep(&sep_line, " ");
+       32:  611:	strsep(&sep_line, " ");
+       32:  612:	int print_index = atoi(strsep(&sep_line, " ")) - 1;
+        -:  613:
+        -:  614:	//Find entry to pluck
+       32:  615:	entry * entry_to_pluck = command_get(line,db_head,false,false);
+        -:  616:
+        -:  617:	//Check edge cases
+       32:  618:	if (entry_to_pluck == NULL) {
+       16:  619:		printf("no such key\n\n");
+       16:  620:        free(original_line_pointer);
+       16:  621:		return false;
+        -:  622:
+       16:  623:	} else if (entry_to_pluck-> length <= print_index) {
+    #####:  624:		printf("index out of range\n\n");
+    #####:  625:        free(original_line_pointer);
+    #####:  626:		return false;
+        -:  627:
+        -:  628:	} else {
+        -:  629:		//Print element
+       16:  630:		if ((entry_to_pluck->values + print_index)->type == INTEGER){
+       16:  631:			printf("%d\n\n", (entry_to_pluck->values + print_index)->value);	
+       16:  632:		} else {
+    #####:  633:			printf("%s\n\n", (entry_to_pluck->values + print_index)->entry->key);
+        -:  634:		}
+        -:  635:
+        -:  636:		//Removing element from entry
+        -:  637:		//Create new element 1 element smaller.
+       16:  638:		element * e = malloc(sizeof(element)*(entry_to_pluck->length-1));
+       16:  639:		int offset = 0;
+        -:  640:		
+        -:  641:		//Iterate through elements, appending if they are not the plucked value.
+       64:  642:		for (int j = 0; j < entry_to_pluck->length; j++){
+       48:  643:			if (j != print_index) {
+        -:  644:				
+       32:  645:				(e+j + offset)->type = (entry_to_pluck->values + j)->type;
+        -:  646:
+       32:  647:				if ((entry_to_pluck->values + j)->type == INTEGER){
+       32:  648:					(e+j + offset)->value = (entry_to_pluck->values + j)->value;	
+       32:  649:				} else {
+    #####:  650:					(e+j + offset)->entry = (entry_to_pluck->values + j)->entry;	
+        -:  651:				}
+        -:  652:				
+       32:  653:			} else {
+        -:  654:				//Calculate offset from index to store values after the plucked element.
+       16:  655:				offset = -1;
+        -:  656:			}
+       48:  657:		}
+        -:  658:
+       16:  659:		entry_to_pluck->length -= 1;
+        -:  660:
+       16:  661:		free(entry_to_pluck->values);
+       16:  662:		entry_to_pluck->values = e;
+        -:  663:
+       16:  664:        free(original_line_pointer);
+       16:  665:		return true;
+        -:  666:	}
+       32:  667:}
+        -:  668:
+        -:  669://Function for pop command
+       38:  670:bool command_pop(const char line[MAX_LINE], entry * db_head) {
+        -:  671:	//Get entry to pop from.
+       38:  672:	entry * entry_to_pop = command_get(line,db_head,false,false);
+        -:  673:
+        -:  674:	//Check edge cases.
+       38:  675:	if (entry_to_pop == NULL) {
+       16:  676:		printf("no such key\n\n");
+       16:  677:		return false;
+        -:  678:
+       22:  679:	} else if (entry_to_pop->length == 0){
+    #####:  680:		printf("nil\n\n");
+    #####:  681:		return true;
+        -:  682:
+        -:  683:	} else {
+        -:  684:		//Print popped value
+       22:  685:		if ((entry_to_pop->values)->type == INTEGER){
+       16:  686:			printf("%d\n\n", (entry_to_pop->values)->value);	
+       16:  687:		} else {
+        6:  688:			printf("%s\n\n", (entry_to_pop->values)->entry->key);
+        -:  689:		}
+        -:  690:		
+       22:  691:		element * e = malloc(sizeof(element)*(entry_to_pop->length-1));
+       22:  692:		int offset = -1;
+        -:  693:		
+        -:  694:		//Iterate and copy over values with offset starting at -1 and starting at the second element after the popped element.
+       62:  695:		for (int j = 1; j < entry_to_pop->length; j++){
+        -:  696:			
+       40:  697:			(e+j + offset)->type = (entry_to_pop->values + j)->type;
+        -:  698:
+       40:  699:			if ((entry_to_pop->values + j)->type == INTEGER){
+       28:  700:				(e+j + offset)->value = (entry_to_pop->values + j)->value;	
+       28:  701:			} else {
+       12:  702:				(e+j + offset)->entry = (entry_to_pop->values + j)->entry;	
+        -:  703:			}
+        -:  704:
+       40:  705:		}
+        -:  706:
+       22:  707:		entry_to_pop->length -= 1;
+       22:  708:		free(entry_to_pop->values);
+       22:  709:		entry_to_pop->values = e;
+        -:  710:
+       22:  711:		return true;
+        -:  712:	}
+        -:  713:
+        -:  714:
+       38:  715:}
+        -:  716:
+        -:  717://Function for min command
+       73:  718:int command_min(const char line[MAX_LINE], entry * db_head, bool print){
+        -:  719:	//Find entry to find min
+       73:  720:	entry * search_entry = command_get(line,db_head,false,false);
+        -:  721:	
+        -:  722:	//Check if entry was found.
+       73:  723:	if (search_entry == NULL) {
+       16:  724:		printf("no such key\n\n");
+       16:  725:		return false;
+        -:  726:
+        -:  727:	} else {
+        -:  728:		//Set 1st value as min.
+        -:  729:		//Look for 1st value recursively if 1st element is a reference key
+       57:  730:		int min = 0;
+       57:  731:		if (search_entry->values->type == INTEGER){
+       41:  732:			min = search_entry->values->value;
+       41:  733:		} else {
+        -:  734:			//Create command and call min recursively.
+       16:  735:			char command1[MAX_LINE] = "MIN ";
+       16:  736:			strcat(command1,search_entry->values->entry->key);
+       16:  737:			min = command_min(command1,db_head, false);
+        -:  738:		}
+        -:  739:		
+        -:  740:		//Iterate through values and search for min - search recursively for references.
+      144:  741:		for (int i = 1; i < search_entry->length; i++){
+       87:  742:			if ((search_entry->values+i)->value < min){
+        -:  743:
+        4:  744:				if ((search_entry->values +i)->type == INTEGER){
+    #####:  745:					min = (search_entry->values +i)->value;
+    #####:  746:				} else {
+        4:  747:					char command1[MAX_LINE] = "MIN ";
+        4:  748:					strcat(command1,(search_entry->values + i)->entry->key);
+        4:  749:					min = command_min(command1,db_head,false);
+        -:  750:				}
+        4:  751:			}
+       87:  752:		}
+       57:  753:		if (print == true){
+       37:  754:			printf("%d\n\n",min);
+       37:  755:		}
+       57:  756:		return min;
+        -:  757:	}
+        -:  758:
+       73:  759:}
+        -:  760:
+        -:  761://Function for max command
+       43:  762:int command_max(const char line[MAX_LINE], entry * db_head, bool print){
+        -:  763:	//Find entry for max.
+       43:  764:	entry * search_entry = command_get(line,db_head,false,false);
+        -:  765:
+       43:  766:	if (search_entry == NULL) {
+       16:  767:		printf("no such key\n\n");
+       16:  768:		return false;
+        -:  769:	} else {
+        -:  770:		//Look for 1st value recursively if 1st element is a reference key
+       27:  771:		int max = 0;
+       27:  772:		if (search_entry->values->type == INTEGER){
+       27:  773:			max = search_entry->values->value;
+       27:  774:		} else {
+    #####:  775:			char command1[MAX_LINE] = "MAX ";
+    #####:  776:			strcat(command1,search_entry->values->entry->key);
+    #####:  777:			max = command_max(command1,db_head, false);
+        -:  778:		}
+        -:  779:		
+        -:  780:		//Iterate through values and search for min - search recursively for references.
+       67:  781:		for (int i = 1; i < search_entry->length; i++){
+       40:  782:			if ((search_entry->values+i)->value > max){
+        -:  783:
+       38:  784:				if ((search_entry->values +i)->type == INTEGER){
+       32:  785:					max = (search_entry->values +i)->value;
+       32:  786:				} else {
+        6:  787:					char command1[MAX_LINE] = "max ";
+        6:  788:					strcat(command1,(search_entry->values + i)->entry->key);
+        6:  789:					max = command_max(command1,db_head,false);
+        -:  790:				}
+       38:  791:			}
+       40:  792:		}
+       27:  793:		if (print == true){
+       21:  794:			printf("%d\n\n",max);
+       21:  795:		}
+       27:  796:		return max;
+        -:  797:	}
+        -:  798:
+       43:  799:}
+        -:  800:
+        -:  801://Function for sum command
+      320:  802:int command_sum(const char line[MAX_LINE], entry * db_head, bool print){
+        -:  803:	//Find entry for sum
+      320:  804:	entry * search_entry = command_get(line,db_head,false,false);
+        -:  805:
+      320:  806:	if (search_entry == NULL) {
+       16:  807:		printf("no such key\n\n");
+       16:  808:		return false;
+        -:  809:	} else {
+      304:  810:		int sum = 0;
+        -:  811:		
+        -:  812:		//Iterate through values adding to sum. Sum recursively for reference elements.
+      912:  813:		for (int i = 0; i < search_entry->length; i++){
+      608:  814:			if ((search_entry->values +i)->type == INTEGER){
+      416:  815:				sum += (search_entry->values + i)->value;
+      416:  816:			} else {
+      192:  817:				char command1[MAX_LINE] = "sum ";
+      192:  818:				strcat(command1,(search_entry->values + i)->entry->key);
+      192:  819:				sum += command_sum(command1,db_head,false);
+        -:  820:			}
+      608:  821:		}
+      304:  822:		if (print == true) {
+      112:  823:			printf("%d\n\n",sum);
+      112:  824:		}
+      304:  825:		return sum;
+        -:  826:	}
+        -:  827:
+      320:  828:}
+        -:  829:
+        -:  830://Function for len command
+      128:  831:int command_len(const char line[MAX_LINE], entry * db_head, bool print) {
+        -:  832:	//Find entry for len
+      128:  833:	entry * search_entry = command_get(line,db_head,false,false);
+        -:  834:
+      128:  835:	int len = 0;
+      128:  836:	if (search_entry == NULL) {
+       16:  837:		if (print == true) {
+       16:  838:			printf("no such key\n\n");
+       16:  839:		}
+       16:  840:		return 0;
+        -:  841:	} else {
+        -:  842:		//Iterate through values, summing len recursively for reference keys.
+      352:  843:		for (int i = 0; i < search_entry->length; i++) {
+      240:  844:			if ((search_entry->values +i)->type == INTEGER){
+      176:  845:				len += 1;
+      176:  846:			} else {
+       64:  847:				char command1[MAX_LINE] = "LEN ";
+       64:  848:				strcat(command1,(search_entry->values + i)->entry->key);
+       64:  849:				len += command_len(command1,db_head,false);
+        -:  850:			}
+      240:  851:		}
+      112:  852:		if (print == true) {
+       48:  853:			printf("%d\n\n",len);
+       48:  854:		}
+      112:  855:		return len;
+        -:  856:	}
+      128:  857:}
+        -:  858:
+        -:  859://Function for del command
+      240:  860:entry * command_del(const char line[MAX_LINE], entry * db_head, bool print) {
+        -:  861:	//Find entry to delete
+      240:  862:	entry * search_entry = command_get(line,db_head,false,false);
+        -:  863:
+      240:  864:	if (search_entry == NULL) {
+       96:  865:		if (print == true){
+       32:  866:			printf("no such key\n\n");
+       32:  867:		}
+       96:  868:		return db_head;
+        -:  869:	} else {
+        -:  870:
+      144:  871:		if (command_backward(line, db_head,false)){
+    #####:  872:			if (print == true) {
+    #####:  873:				printf("not permitted\n\n");
+    #####:  874:			}
+    #####:  875:			return db_head;
+        -:  876:		}
+        -:  877:
+        -:  878:		// If trying to delete head.
+      144:  879:		if (search_entry->prev == NULL){
+       16:  880:			if (search_entry->next != NULL) {
+        -:  881:				//Set next entry as head.
+    #####:  882:				search_entry->next->prev = NULL;
+    #####:  883:				db_head = search_entry->next;
+        -:  884:
+        -:  885:				//Free current values
+    #####:  886:				if (search_entry->length > 0){
+    #####:  887:					free(search_entry->values);
+    #####:  888:				}
+        -:  889:				
+        -:  890:				//Free entry to be deleted.
+    #####:  891:				free(search_entry);
+    #####:  892:			} else {
+       16:  893:				db_head->is_initialised = false;
+       16:  894:				if (search_entry->length > 0){
+       16:  895:					free(search_entry->values);
+       16:  896:				}
+        -:  897:			}
+        -:  898:		
+        -:  899:		//Deleting entry in middle
+       16:  900:		} else {
+      128:  901:			if(search_entry->next == NULL){
+       96:  902:				search_entry->prev->next = NULL;
+       96:  903:				free(search_entry->values);
+       96:  904:				free(search_entry);
+       96:  905:			} else {
+       32:  906:				search_entry->prev->next = search_entry->next;
+       32:  907:				search_entry->next->prev = search_entry->prev;
+       32:  908:				free(search_entry->values);
+       32:  909:				free(search_entry);
+        -:  910:			}
+        -:  911:		}
+      144:  912:		if (print == true){
+       32:  913:			printf("ok\n\n");
+       32:  914:		}
+      144:  915:		return db_head;
+        -:  916:	}
+      240:  917:}
+        -:  918:
+        -:  919://Function for list keys command
+       32:  920:bool command_list_keys(entry * db_head){
+       32:  921:	if (db_head->is_initialised == false) {
+       16:  922:		printf("no keys\n\n");
+       16:  923:		return false;
+        -:  924:	} else {
+        -:  925:		//Print keys for each entry until end
+       16:  926:		entry * search_entry = db_head;
+       48:  927:		while (search_entry->next != NULL) {
+       32:  928:			search_entry = search_entry->next;
+        -:  929:		}
+       64:  930:		while (search_entry != NULL) {
+       48:  931:			printf("%s\n",search_entry->key);
+       48:  932:			search_entry = search_entry->prev;
+        -:  933:		}
+       16:  934:		printf("\n");
+        -:  935:	}
+       16:  936:	return true;
+       32:  937:}
+        -:  938:
+        -:  939://Function for list entries command
+      112:  940:bool command_list_entries(entry * db_head){
+      112:  941:	if (db_head->is_initialised == false) {
+       16:  942:		printf("no entries\n\n");
+       16:  943:		return false;
+        -:  944:	} else {
+        -:  945:		
+        -:  946:		//Find end of entries linked list.
+       96:  947:		entry * search_entry = db_head;
+      224:  948:		while (search_entry->next != NULL) {
+      128:  949:			search_entry = search_entry->next;
+        -:  950:		}
+        -:  951:		
+        -:  952:		//Go backwards from end to beginning printing each value from each entry.
+      320:  953:		while (search_entry != NULL) {
+      224:  954:			printf("%s ",search_entry->key);
+      224:  955:			printf("[");
+      784:  956:			for (int i = 0; i < search_entry->length; i++){	
+        -:  957:				
+      560:  958:				if ((search_entry->values + i)->type == INTEGER){
+      448:  959:					if (i == search_entry->length - 1){
+      224:  960:						printf("%d", (search_entry->values + i)->value);
+      224:  961:					} else {
+      224:  962:						printf("%d ", (search_entry->values + i)->value);
+        -:  963:					}
+      448:  964:				} else {
+      112:  965:					if (i == search_entry->length - 1){
+    #####:  966:						printf("%s", (search_entry->values + i)->entry->key);
+    #####:  967:					} else {
+      112:  968:						printf("%s ", (search_entry->values + i)->entry->key);
+        -:  969:					}
+        -:  970:				}
+        -:  971:
+      560:  972:			}
+      224:  973:			printf("]\n");
+      224:  974:			search_entry = search_entry->prev;
+        -:  975:		}
+       96:  976:		printf("\n");
+        -:  977:	}
+       96:  978:	return true;
+      112:  979:}
+        -:  980:
+        -:  981://Function for reverse command
+       32:  982:bool command_rev(const char line[MAX_LINE], entry * db_head){
+        -:  983:	
+        -:  984:	//Get entry to reverse
+       32:  985:	entry * search_entry = command_get(line,db_head,false,false);
+       32:  986:	if (search_entry == NULL) {
+       16:  987:		printf("no such key\n\n");
+       16:  988:		return false;
+        -:  989:	} else {
+        -:  990:		//Add values to list
+       16:  991:		int * list = malloc(sizeof(int)*search_entry->length);
+       64:  992:		for (int i = 0; i < search_entry->length; i++){
+       48:  993:			*(list + i) = (search_entry->values + i)->value;
+       48:  994:		}
+        -:  995:
+        -:  996:		//Add values from list to entry backwards
+       64:  997:		for (int i = 0; i < search_entry->length; i++){
+       48:  998:			(search_entry->values + i)->value = *(list + search_entry->length-i-1);
+       48:  999:		}
+        -: 1000:
+       16: 1001:		free(list);
+       16: 1002:		printf("ok\n\n");
+       16: 1003:		return true;
+        -: 1004:	}
+        -: 1005:	return false;
+       32: 1006:}
+        -: 1007:
+        -: 1008://Function for uniq command
+       32: 1009:bool command_uniq(const char line[MAX_LINE], entry * db_head){
+        -: 1010:	//Get entry to ammend
+       32: 1011:	entry * search_entry = command_get(line,db_head,false,false);
+       32: 1012:	if (search_entry == NULL) {
+       16: 1013:		printf("no such key\n\n");
+       16: 1014:		return false;
+        -: 1015:	} else {
+        -: 1016:
+       16: 1017:		int shortened = 0;
+        -: 1018:
+        -: 1019:		//Iterate through values checking adjacent values for equality.
+        -: 1020:		//Iterate through values after finding adjacent equal values and shuffle them back one space.
+        -: 1021:		//Continue from position of duplicate and continue comparisons.
+       64: 1022:		for (int i = 0; i < search_entry->length - 1 - shortened ; i++) {
+       48: 1023:			if ((search_entry->values + i)->value == (search_entry->values + i + 1)->value) {
+       64: 1024:				for (int j = i; j < search_entry->length -1; j++) {
+       48: 1025:					(search_entry->values + j)->value = (search_entry->values + j + 1)->value;
+       48: 1026:				}
+       16: 1027:				shortened += 1;
+       16: 1028:				i--;
+       16: 1029:			}
+       48: 1030:		}
+        -: 1031:
+        -: 1032:		//Change length
+       16: 1033:		search_entry->length -= shortened;
+        -: 1034:
+       16: 1035:		printf("ok\n\n");
+       16: 1036:		return true;
+        -: 1037:	}
+        -: 1038:	return false;
+       32: 1039:}
+        -: 1040:
+        -: 1041://Comparison function for sort
+      160: 1042:int cmpfunc(const void * a, const void * b){
+      160: 1043:	return (((element*) a)->value - ((element*)b)->value);
+        -: 1044:}
+        -: 1045:
+        -: 1046://Function for sort command
+       32: 1047:bool command_sort(const char line[MAX_LINE], entry * db_head){
+        -: 1048:	//Find entry to sort
+       32: 1049:	entry * search_entry = command_get(line,db_head,false,false);
+       32: 1050:	if (search_entry == NULL) {
+       16: 1051:		printf("no such key\n\n");
+       16: 1052:		return false;
+        -: 1053:	} else {
+       16: 1054:		qsort(search_entry->values,search_entry->length,sizeof(element),cmpfunc);
+       16: 1055:		printf("ok\n\n");
+       16: 1056:		return true;
+        -: 1057:	}
+       32: 1058:}
+        -: 1059:
+        -: 1060://Function for type command
+       11: 1061:bool command_type(const char line[MAX_LINE], entry * db_head) {
+       11: 1062:	entry * search_entry = command_get(line,db_head,false,false);
+       11: 1063:	if (search_entry == NULL) {
+        3: 1064:		printf("no such key\n\n");
+        3: 1065:		return false;
+        -: 1066:	} else {
+        8: 1067:		if (command_forward(line,db_head,false)){
+        4: 1068:			printf("general\n\n");
+        4: 1069:		} else {
+        4: 1070:			printf("simple\n\n");
+        -: 1071:		}
+        8: 1072:		return true;
+        -: 1073:	}
+       11: 1074:}
+        -: 1075:
+        -: 1076://Function to copy database to new memory
+      304: 1077:entry * copy_database(entry * old_curr_entry){
+      304: 1078:	entry * new_db_head = malloc(sizeof(entry));
+      304: 1079:	entry * new_current_entry = new_db_head;
+      304: 1080:	entry * last_entry = NULL;
+        -: 1081:	element * new_vals;
+        -: 1082:	
+      304: 1083:	if (old_curr_entry->is_initialised == false) {
+    #####: 1084:		new_db_head->is_initialised = false;
+    #####: 1085:		return new_db_head;
+        -: 1086:	}
+        -: 1087:
+      304: 1088:	copy_reference * cr = NULL;
+      304: 1089:	int num_ref_copies = 0;
+        -: 1090:
+      640: 1091:	while (old_curr_entry != NULL) {
+        -: 1092:		
+      640: 1093:		new_current_entry->backward_max = old_curr_entry->backward_max;
+      640: 1094:		new_current_entry->backward_size = old_curr_entry->backward_size;
+      640: 1095:		new_current_entry->forward_max = old_curr_entry->forward_max;
+      640: 1096:		new_current_entry->forward_size = old_curr_entry->forward_size;
+      640: 1097:		new_current_entry->is_initialised = old_curr_entry->is_initialised;
+      640: 1098:		new_current_entry->is_simple = old_curr_entry->is_simple;
+      640: 1099:		strncpy(new_current_entry->key,old_curr_entry->key,MAX_KEY);
+      640: 1100:		new_current_entry->length = old_curr_entry->length;
+      640: 1101:		new_current_entry->next = NULL;
+      640: 1102:		new_current_entry->prev = NULL;
+        -: 1103:
+        -: 1104:		//Copy over values to new element linked list
+      640: 1105:		if (new_current_entry->length > 0){
+      640: 1106:			new_vals = malloc((new_current_entry->length)*sizeof(element));
+        -: 1107:		
+     1856: 1108:			for (int i = 0; i < new_current_entry->length; i++) {
+        -: 1109:				
+     1216: 1110:				(new_vals+i)->type = (old_curr_entry->values+i)->type;
+        -: 1111:
+     1216: 1112:				if ((new_vals+i)->type == INTEGER) {
+      912: 1113:					(new_vals+i)->value = (old_curr_entry->values+i)->value;
+      912: 1114:				} else {
+        -: 1115:					//Keep record of all references to copy entry addresses later.
+      304: 1116:					if (cr == NULL) {
+      160: 1117:						cr = malloc(sizeof(copy_reference));
+      160: 1118:						strncpy(cr->key_entry,old_curr_entry->key, MAX_KEY);
+      160: 1119:						strncpy(cr->key_val,(old_curr_entry->values+i)->entry->key, MAX_KEY);
+      160: 1120:						cr->pos = i;
+      160: 1121:						num_ref_copies = 1;
+      160: 1122:					} else {
+      144: 1123:						num_ref_copies++;
+      144: 1124:						cr = realloc(cr,sizeof(copy_reference)*num_ref_copies);
+      144: 1125:						strncpy((cr + num_ref_copies-1)->key_entry,old_curr_entry->key, MAX_KEY);
+      144: 1126:						strncpy((cr + num_ref_copies-1)->key_val,(old_curr_entry->values+i)->entry->key, MAX_KEY);
+      144: 1127:						(cr + num_ref_copies-1)->pos = i;
+        -: 1128:
+        -: 1129:					}
+        -: 1130:				}
+        -: 1131:
+     1216: 1132:			}
+      640: 1133:			new_current_entry->values = new_vals;
+      640: 1134:		}
+        -: 1135:
+        -: 1136:		//Copy next and prev addresses
+      640: 1137:		if (old_curr_entry->next == NULL){
+      304: 1138:			new_current_entry->prev = last_entry;
+      304: 1139:			break;
+        -: 1140:		} else {
+        -: 1141:			//Allocate next entry memory
+      336: 1142:			new_current_entry->next = malloc(sizeof(entry));
+      336: 1143:			new_current_entry->prev = last_entry;
+        -: 1144:			
+      336: 1145:			last_entry = new_current_entry;
+      336: 1146:			new_current_entry = new_current_entry->next;
+        -: 1147:		}
+      336: 1148:		old_curr_entry = old_curr_entry->next;
+        -: 1149:	}
+        -: 1150:	
+        -: 1151:	//Copy references
+      608: 1152:	for (int i = 0; i < num_ref_copies; i++) {
+      304: 1153:		char command1[MAX_LINE] = "GET ";
+      304: 1154:		strcat(command1,(cr + i)->key_entry);
+        -: 1155:
+      304: 1156:		char command2[MAX_LINE] = "GET ";
+      304: 1157:		strcat(command2,(cr + i)->key_val);
+        -: 1158:
+      304: 1159:		(command_get(command1,new_db_head,false,false)->values + (cr + i)->pos)->entry = command_get(command2,new_db_head,false,false);
+      304: 1160:	}
+      304: 1161:	free(cr);
+        -: 1162:
+      304: 1163:	return new_db_head;
+      304: 1164:}
+        -: 1165:
+        -: 1166://Function for snapshot commmand
+      176: 1167:bool command_snapshot(entry * db_head, snapshot * snapshot_head){
+      176: 1168:	int snap_counter = snapshot_head->id;
+        -: 1169:	//No snapshots yet
+      176: 1170:	if (snapshot_head->is_initialised == false){
+        -: 1171:		
+       96: 1172:		snapshot_head->id = snap_counter;
+       96: 1173:		snapshot_head->prev = NULL;
+       96: 1174:		snapshot_head->next = NULL;
+       96: 1175:		snapshot_head->is_initialised = true;
+       96: 1176:		snapshot_head->entries = copy_database(db_head);
+       96: 1177:		printf("saved as snapshot 1\n\n");
+        -: 1178:
+       96: 1179:	} else {
+        -: 1180:		//Find last snapshot
+        -: 1181:		snapshot * last_snap;
+       80: 1182:		last_snap = snapshot_head;
+       80: 1183:		while (last_snap->next != NULL) {
+    #####: 1184:			last_snap = last_snap->next;
+    #####: 1185:			snap_counter++;
+        -: 1186:		}
+        -: 1187:
+        -: 1188:		//Create new snapshot with database copy
+       80: 1189:		snapshot * next_snap = malloc(sizeof(snapshot));
+       80: 1190:		next_snap->id = snap_counter + 1;
+       80: 1191:		next_snap->prev = last_snap;
+       80: 1192:		next_snap->is_initialised = true;
+       80: 1193:		next_snap->entries = copy_database(db_head);
+       80: 1194:		last_snap->next = next_snap;
+       80: 1195:		next_snap->next = NULL;
+       80: 1196:		printf("saved as snapshot %d\n\n", next_snap->id);
+        -: 1197:	}
+      176: 1198:	return true;
+        -: 1199:} 
+        -: 1200:
+        -: 1201://Function for checkout command
+      192: 1202:entry * command_checkout(const char line[MAX_LINE], entry * db_head, snapshot * snapshot_head, bool print) {
+      192: 1203:	snapshot * snap_search = snapshot_head;
+      192: 1204:	char * sep_line = calloc(strlen(line)+1, 1);
+      192: 1205:	char * original_line_pointer = sep_line;
+      192: 1206:	strncpy(sep_line,line,strlen(line));
+        -: 1207:
+        -: 1208:	//Extract snapshot key from line
+      192: 1209:	strsep(&sep_line, " ");
+      192: 1210:	char * key = strsep(&sep_line, " ");
+        -: 1211:
+      192: 1212:	if (key == NULL || snap_search->is_initialised == false) {
+       48: 1213:		if (print == true){
+       32: 1214:			printf("no such snapshot\n\n");
+       32: 1215:		}
+       48: 1216:		free(original_line_pointer);
+       48: 1217:		return db_head;
+        -: 1218:	}
+        -: 1219:
+        -: 1220:	//Find snapshot from snapshot key
+      176: 1221:	while (snap_search != NULL) {
+      160: 1222:		if (snap_search->id == atoi(key)){
+        -: 1223:			//Copy database to new database state
+      128: 1224:			entry * new_db_head = copy_database(snap_search->entries);
+        -: 1225:			
+        -: 1226:			//Free current state
+        -: 1227:			
+      128: 1228:			free_all_entries(db_head);
+      128: 1229:			if (print == true){
+       96: 1230:				printf("ok\n\n");
+       96: 1231:			}
+      128: 1232:			free(original_line_pointer);
+      128: 1233:			return new_db_head;
+        -: 1234:		}
+       32: 1235:		snap_search = snap_search->next;
+        -: 1236:
+        -: 1237:	}
+       16: 1238:	if (print == true){
+       16: 1239:		printf("no such snapshot\n\n");
+       16: 1240:	}
+       16: 1241:    free(original_line_pointer);
+       16: 1242:	return db_head;
+        -: 1243:
+      192: 1244:}
+        -: 1245:
+        -: 1246://Function for drop command
+       48: 1247:snapshot * command_drop(const char line[MAX_LINE], snapshot * snapshot_head, bool print) {
+       48: 1248:	snapshot * snap_search = snapshot_head;
+       48: 1249:	char * sep_line = calloc(strlen(line)+1, 1);
+       48: 1250:	char * original_line_pointer = sep_line;
+       48: 1251:	strncpy(sep_line,line,strlen(line));
+        -: 1252:
+        -: 1253:	//Extract snapshot key
+       48: 1254:	strsep(&sep_line, " ");
+       48: 1255:	char * key = strsep(&sep_line, " ");
+        -: 1256:
+       48: 1257:	if (key == NULL || snap_search->is_initialised == false) {
+       16: 1258:		printf("no such snapshot\n\n");
+       16: 1259:        free(original_line_pointer);
+       16: 1260:		return snapshot_head;
+        -: 1261:	}
+        -: 1262:
+       32: 1263:	entry * entry_iterator = NULL;
+        -: 1264:	
+        -: 1265:	//Find snapshot from snapshot key
+       48: 1266:	while (snap_search != NULL) {
+       48: 1267:		if (snap_search->id == atoi(key)){
+        -: 1268:			
+        -: 1269:			//Free all entries from snapshot
+       32: 1270:			entry_iterator = snap_search->entries;
+       32: 1271:			free_all_entries(entry_iterator);
+        -: 1272:
+       32: 1273:			if (print == true){
+       32: 1274:				printf("ok\n\n");
+       32: 1275:			}
+        -: 1276:			
+        -: 1277:			//Adjust next and prev pointers based on deleted snapshot
+        -: 1278:			snapshot * new_snap_head;
+       32: 1279:            free(original_line_pointer);
+       32: 1280:			if (snap_search->prev == NULL && snap_search->next == NULL) {
+       16: 1281:				new_snap_head = malloc(sizeof(snapshot));
+       16: 1282:				new_snap_head->is_initialised = false;
+        -: 1283:				
+       16: 1284:				free(snap_search);
+       16: 1285:				return new_snap_head;
+       16: 1286:			} else if (snap_search->prev == NULL && snap_search->next != NULL) {
+    #####: 1287:				new_snap_head = snap_search->next;
+        -: 1288:				
+    #####: 1289:				free(snap_search);
+    #####: 1290:				return new_snap_head;
+       16: 1291:			} else if (snap_search-> prev != NULL && snap_search->next == NULL) {
+       16: 1292:				snap_search->prev->next = NULL;
+        -: 1293:				
+       16: 1294:				free(snap_search);
+       16: 1295:				return snapshot_head;
+        -: 1296:			} else {
+    #####: 1297:				snap_search->prev->next = snap_search->next;
+    #####: 1298:				snap_search->next->prev = snap_search->prev;
+        -: 1299:				
+    #####: 1300:				free(snap_search);
+    #####: 1301:				return snapshot_head;
+        -: 1302:			}
+        -: 1303:
+        -: 1304:		}
+       16: 1305:		snap_search = snap_search->next;
+        -: 1306:
+        -: 1307:	}
+    #####: 1308:	printf("no such snapshot\n\n");
+    #####: 1309:    free(original_line_pointer);
+    #####: 1310:	return snapshot_head;
+        -: 1311:
+       48: 1312:}
+        -: 1313:
+        -: 1314://Function for list snapshots command
+       80: 1315:bool command_list_snapshots(snapshot * snapshot_head){
+       80: 1316:	if (snapshot_head->is_initialised == false){
+       16: 1317:		printf("no snapshots\n\n");
+       16: 1318:		return false;
+        -: 1319:	} else {
+        -: 1320:		//Find end of linked list
+       64: 1321:		snapshot * search_snap = snapshot_head;
+       96: 1322:		while (search_snap->next != NULL){
+       32: 1323:			search_snap = search_snap->next;
+        -: 1324:		}
+        -: 1325:		//Print snapshot keys backwards
+      160: 1326:		while (search_snap != NULL){
+       96: 1327:			printf("%d\n", search_snap->id);
+       96: 1328:			search_snap = search_snap->prev;
+        -: 1329:		}
+       64: 1330:		printf("\n");
+       64: 1331:		return true;
+        -: 1332:	}
+        -: 1333:
+       80: 1334:}
+        -: 1335:
+        -: 1336://Function for rollback command
+       48: 1337:bool command_rollback(const char line[MAX_LINE], snapshot * snapshot_head) {
+       48: 1338:	snapshot * snap_search = snapshot_head;
+        -: 1339:	
+       48: 1340:	char * sep_line = calloc(strlen(line)+1, 1);
+       48: 1341:	char * original_line_pointer = sep_line;
+       48: 1342:	strncpy(sep_line,line,strlen(line));
+        -: 1343:
+        -: 1344:	//Extract snapshot key from command
+       48: 1345:	strsep(&sep_line, " ");
+       48: 1346:	char * key = strsep(&sep_line, " ");
+        -: 1347:
+       48: 1348:	if (key == NULL || snap_search->is_initialised == false) {
+       16: 1349:		printf("no such snapshot\n\n");
+       16: 1350:        free(original_line_pointer);
+       16: 1351:		return false;
+        -: 1352:	}
+        -: 1353:
+        -: 1354:	//Find snapshot from key
+       32: 1355:	while (snap_search != NULL) {
+       32: 1356:		if (snap_search->id == atoi(key)){
+       32: 1357:			snap_search = snap_search->next;
+        -: 1358:
+        -: 1359:			//Free all snapshots and values onwards
+       32: 1360:			if (snap_search != NULL){
+       32: 1361:				while (snap_search->next != NULL) {
+    #####: 1362:					free_all_entries(snap_search->entries);
+    #####: 1363:					snap_search = snap_search->next;
+    #####: 1364:					free(snap_search->prev);
+        -: 1365:				}
+       32: 1366:				free_all_entries(snap_search->entries);
+       32: 1367:				snap_search->prev->next = NULL;
+       32: 1368:				free(snap_search);
+        -: 1369:				
+       32: 1370:			}
+       32: 1371:			printf("ok\n\n");
+       32: 1372:            free(original_line_pointer);
+       32: 1373:			return true;
+        -: 1374:		}
+    #####: 1375:		snap_search = snap_search->next;
+        -: 1376:
+        -: 1377:	}
+    #####: 1378:	printf("no such snapshot\n\n");
+    #####: 1379:    free(original_line_pointer);
+    #####: 1380:	return false;
+       48: 1381:}
+        -: 1382:
+        -: 1383://Function for purge command
+       96: 1384:entry * command_purge(const char line[MAX_LINE], entry * db_head, snapshot * snapshot_head) {
+       96: 1385:	snapshot * snap_search = snapshot_head;
+       96: 1386:	char * sep_line = calloc(strlen(line)+1, 1);
+       96: 1387:	char * original_line_pointer = sep_line;
+       96: 1388:	strncpy(sep_line,line,strlen(line));
+        -: 1389:
+        -: 1390:	//Extract key
+       96: 1391:	strsep(&sep_line, " ");
+       96: 1392:	char * key = strsep(&sep_line, " ");
+       96: 1393:	if (snap_search->is_initialised == true){
+      176: 1394:		while (snap_search != NULL) {
+      112: 1395:			if (command_backward(line,snap_search->entries,false)){
+       16: 1396:				printf("not permitted\n\n");
+       16: 1397:				free(original_line_pointer);
+       16: 1398:				return db_head;
+        -: 1399:			}
+        -: 1400:			
+       96: 1401:			snap_search = snap_search->next;
+        -: 1402:		}
+       64: 1403:		snap_search = snapshot_head;
+       64: 1404:	}
+        -: 1405:	
+        -: 1406:
+        -: 1407:	//Delete key from current state
+       80: 1408:	char command1[MAX_LINE] = "DEL ";
+       80: 1409:	strcat(command1,key);
+       80: 1410:	entry * del_return = command_del(command1,db_head,false);
+        -: 1411:
+        -: 1412:	//Set new database head pointer for current state if it is changed by delete command
+       80: 1413:	if (del_return != NULL) {
+       80: 1414:		db_head = del_return;
+       80: 1415:	}
+        -: 1416:	
+        -: 1417:	//Iterate through each snapshot
+      176: 1418:	while(snap_search != NULL && snap_search->is_initialised == true ) {
+        -: 1419:		//Delete key from each snapshot
+       96: 1420:		char command2[MAX_LINE] = "DEL ";
+       96: 1421:		strcat(command2,key);
+       96: 1422:		del_return = command_del(command2,snap_search->entries,false);
+        -: 1423:
+        -: 1424:		//Adjust database head for snapshot if changed by delete
+       96: 1425:		if (del_return != NULL){
+       96: 1426:			snap_search->entries = del_return;
+       96: 1427:		}
+       96: 1428:		snap_search = snap_search->next;
+        -: 1429:	}
+        -: 1430:	
+       80: 1431:	printf("ok\n\n");
+       80: 1432:	free(original_line_pointer);
+       80: 1433:	return db_head;
+       96: 1434:}
+        -: 1435:
+        -: 1436://Comparison function for reference list sorting
+      144: 1437:int sortstring(const void* a, const void* b) {
+      144: 1438:    const char * pa = (const char *) a;
+      144: 1439:    const char * pb = (const char *) b;
+      144: 1440:    return strcmp(pa,pb);
+        -: 1441:}
+        -: 1442:
+        -: 1443://Function for forward command
+      232: 1444:bool command_forward(const char line[MAX_LINE], entry * db_head, bool print){
+        -: 1445:    //Check if entry given exists
+      232: 1446:	if (command_get(line,db_head,false,false) == NULL){
+       48: 1447:		if (print == true) {
+       48: 1448:			printf("no such key\n\n");
+       48: 1449:		}
+       48: 1450:        return false;
+        -: 1451:	}
+        -: 1452:	
+        -: 1453:	//Get linked list of forward references unordered
+      184: 1454:	reference * f = calculate_forwards(line, db_head, NULL);
+      184: 1455:    if (f == NULL) {
+      100: 1456:		if (print == true) {
+       96: 1457:			printf("nil\n\n");
+       96: 1458:		}
+        -: 1459:        
+      100: 1460:        return false;
+        -: 1461:    }
+        -: 1462:
+        -: 1463:	//Store head of linked list
+       84: 1464:    reference * head = f;
+       84: 1465:    int num_refs = 0;
+        -: 1466:
+        -: 1467:	//Count number of references
+      248: 1468:    while (f != NULL) {
+      164: 1469:        num_refs++;
+      164: 1470:        f = f->next;
+        -: 1471:    }
+        -: 1472:	//Reset to head of linked list
+       84: 1473:    f = head;
+        -: 1474:
+        -: 1475:	//Move keys to char array in heap memory
+       84: 1476:    char * keys = malloc(num_refs*MAX_KEY);
+      164: 1477:    for (int i = 0; i < num_refs; i++){
+      164: 1478:        strncpy(keys + i*MAX_KEY,f->key,MAX_KEY);
+        -: 1479:        
+        -: 1480:		//Free linked list memory after key is added to char array
+      164: 1481:        if (f->next == NULL) {
+       84: 1482:            free(f);
+       84: 1483:            break;
+        -: 1484:        } else {
+       80: 1485:            f = f->next;
+       80: 1486:            free(f->prev);
+        -: 1487:        }
+        -: 1488:        
+       80: 1489:    }
+        -: 1490:
+        -: 1491:	//Sort keys using custom string comparator
+       84: 1492:    qsort(keys,num_refs,MAX_KEY,sortstring);
+        -: 1493:
+        -: 1494:	//Print out keys comma separated
+       84: 1495:    if (print == true) {
+      160: 1496:		for (int i = 0; i < num_refs-1; i++){
+       80: 1497:        	printf("%s, ", keys + i*MAX_KEY);
+       80: 1498:    	}
+       80: 1499:		printf("%s\n\n",keys + MAX_KEY*(num_refs - 1));
+       80: 1500:	}
+        -: 1501:    
+       84: 1502:    free(keys);
+       84: 1503:    return true;
+      232: 1504:}
+        -: 1505:
+        -: 1506://Function to recursively calculate forwards
+     2604: 1507:reference * calculate_forwards(const char line[MAX_LINE], entry * db_head, reference * f){
+        -: 1508:	//Find entry for forwards
+     2604: 1509:	entry * search_entry = command_get(line,db_head,false,false);
+        -: 1510:
+     2604: 1511:    reference * f_head = NULL;
+        -: 1512:    
+     2604: 1513:	if (search_entry == NULL) {
+    #####: 1514:		printf("no such key\n\n");
+    #####: 1515:		return NULL;
+        -: 1516:	} else {
+        -: 1517:		//For each entry in database state
+     6724: 1518:		for (int i = 0; i < search_entry->length; i++){
+        -: 1519:			//Check for reference
+     4120: 1520:            if ((search_entry->values + i)->type == ENTRY) {
+     1204: 1521:                if (f == NULL) {
+        -: 1522:					//Initialise forwards list
+      612: 1523:                    f = malloc(sizeof(reference));
+      612: 1524:                    f->prev = NULL;
+      612: 1525:                    f->next = NULL;
+        -: 1526:                    
+        -: 1527:					//Copy key to forwards list
+      612: 1528:                    strncpy(f->key,(search_entry->values+i)->entry->key,MAX_KEY);
+      612: 1529:                    f_head = f;
+        -: 1530:                    
+        -: 1531:					//Recursively calculate forward references of the forward reference
+      612: 1532:                    char command[MAX_LINE] = "FORWARD ";
+      612: 1533:	                strcat(command,f->key);
+      612: 1534:                    calculate_forwards(command,db_head,f);
+        -: 1535:
+      612: 1536:                } else {
+        -: 1537:					//Extend linked list
+      592: 1538:                    f->next = malloc(sizeof(reference));
+      592: 1539:                    f->next->prev = f;
+        -: 1540:                    
+      592: 1541:                    f = f->next;
+      592: 1542:                    f->next = NULL;
+        -: 1543:
+        -: 1544:					//Copy key to list of references
+      592: 1545:                    strncpy(f->key,(search_entry->values+i)->entry->key,MAX_KEY);
+        -: 1546:
+        -: 1547:					//Recursively calculate forward references of the forward reference
+      592: 1548:                    char command[MAX_LINE] = "FORWARD ";
+      592: 1549:	                strcat(command,f->key);
+      592: 1550:                    calculate_forwards(command,db_head,f);
+        -: 1551:                }
+     1204: 1552:            }
+     4120: 1553:        }
+        -: 1554:		//Return head to linked list of references
+     2604: 1555:		return f_head;
+        -: 1556:	}
+     2604: 1557:}
+        -: 1558:
+        -: 1559://Function for backward command
+      480: 1560:bool command_backward(const char line[MAX_LINE], entry * db_head, bool print){
+        -: 1561:	//Check if key exists
+      480: 1562:	if (command_get(line,db_head,false,false) == NULL){
+       64: 1563:		if (print == true) {
+       48: 1564:			printf("no such key\n\n");
+       48: 1565:		}
+       64: 1566:        return false;
+        -: 1567:	}
+        -: 1568:	//Copy command line
+      416: 1569:	char * sep_line = calloc(strlen(line)+1, 1);
+      416: 1570:	char * original_line_pointer = sep_line;
+      416: 1571:	strncpy(sep_line,line,strlen(line));
+        -: 1572:
+        -: 1573:	//Extract snapshot key from line
+      416: 1574:	strsep(&sep_line, " ");
+      416: 1575:	char * key = strsep(&sep_line, " ");
+        -: 1576:	
+        -: 1577:	//Initialise lists
+      416: 1578:	reference * backwards = NULL;
+      416: 1579:	reference * head = NULL;
+      416: 1580:	entry * search_entry = db_head;
+        -: 1581:
+        -: 1582:	//Search each entry in database state
+     1632: 1583:	while (search_entry != NULL) {
+        -: 1584:		
+        -: 1585:		//Calculate forward references for each entry
+     1216: 1586:		char command[MAX_LINE] = "FORWARD ";
+     1216: 1587:	    strcat(command,search_entry->key);
+     1216: 1588:		reference * f = NULL;
+     1216: 1589:		f = calculate_forwards(command,db_head,f);
+        -: 1590:
+        -: 1591:		//Check all references calculated
+     1728: 1592:		while (f != NULL) {
+        -: 1593:
+        -: 1594:			//Search for input key in list of forward references of each entry
+     1040: 1595:			if (strcmp(f->key,key) == 0){
+        -: 1596:				
+        -: 1597:				//If found, add key of entry to backward reference list
+      176: 1598:				if (backwards == NULL) {
+      112: 1599:					backwards = malloc(sizeof(reference));
+      112: 1600:					backwards->prev = NULL;
+      112: 1601:                	backwards->next = NULL;
+      112: 1602:                	strncpy(backwards->key,search_entry->key,MAX_KEY);
+        -: 1603:
+      112: 1604:					head = backwards;
+        -: 1605:
+      112: 1606:				} else {
+       64: 1607:					backwards->next = malloc(sizeof(reference));
+       64: 1608:					backwards->next->prev = backwards;
+        -: 1609:						
+       64: 1610:					backwards = backwards->next;
+       64: 1611:					backwards->next = NULL;
+       64: 1612:					strncpy(backwards->key,search_entry->key,MAX_KEY);
+        -: 1613:				}
+      176: 1614:			}
+        -: 1615:			//Free forward reference linked list as we go
+     1040: 1616:			if (f->next == NULL) {
+      528: 1617:            	free(f);
+      528: 1618:            	break;
+        -: 1619:        	} else {
+      512: 1620:            	f = f->next;
+      512: 1621:            	free(f->prev);
+        -: 1622:       		}
+        -: 1623:		}
+     1216: 1624:		search_entry = search_entry->next;
+        -: 1625:	}
+        -: 1626:
+        -: 1627:	//No backwards references found
+      416: 1628:	if (backwards == NULL) {
+      304: 1629:		if (print == true) {
+       80: 1630:			printf("nil\n\n");
+       80: 1631:		}
+      304: 1632:		free(original_line_pointer);
+      304: 1633:        return false;
+        -: 1634:    }
+        -: 1635:
+        -: 1636:	//Store head of backwards ref linked list
+      112: 1637:    backwards = head;
+      112: 1638:    int num_refs = 0;
+        -: 1639:
+        -: 1640:	//Count number of backward references
+      288: 1641:    while (backwards != NULL) {
+      176: 1642:        num_refs++;
+      176: 1643:        backwards = backwards->next;
+        -: 1644:    }
+        -: 1645:
+        -: 1646:	//Reset to head of linked list
+      112: 1647:    backwards = head;
+        -: 1648:
+        -: 1649:	//Copy over reference keys to char array in heap memory
+      112: 1650:    char * keys = malloc(num_refs*MAX_KEY);
+      176: 1651:    for (int i = 0; i < num_refs; i++){
+      176: 1652:        strncpy(keys + i*MAX_KEY,backwards->key,MAX_KEY);
+        -: 1653:
+        -: 1654:		//Free backward linked list as we go
+      176: 1655:        if (backwards->next == NULL) {
+      112: 1656:            free(backwards);
+      112: 1657:            break;
+        -: 1658:        } else {
+       64: 1659:            backwards = backwards->next;
+       64: 1660:            free(backwards->prev);
+        -: 1661:        }
+        -: 1662:        
+       64: 1663:    }
+        -: 1664:
+        -: 1665:	//Sort list of keys with custom string comparator
+      112: 1666:    qsort(keys,num_refs,MAX_KEY,sortstring);
+        -: 1667:
+        -: 1668:	//Print backward references in order comma separated
+      112: 1669:    if (print == true) {
+      160: 1670:		for (int i = 0; i < num_refs-1; i++){
+       64: 1671:        	printf("%s, ", keys + i*MAX_KEY);
+       64: 1672:    	}
+       96: 1673:    	printf("%s\n\n",keys + MAX_KEY*(num_refs - 1));
+       96: 1674:	}
+      112: 1675:    free(keys);
+      112: 1676:	free(original_line_pointer);
+      112: 1677:    return true;
+        -: 1678:
+      480: 1679:}
+        -: 1680:
+        -: 1681://Validate line and perform commands
+     2940: 1682:struct whole_db validate_line(const char line[MAX_LINE], entry * db_head, snapshot * snapshot_head){
+        -: 1683:	
+        -: 1684:	//Store whole database struct fill in passed through data
+        -: 1685:	struct whole_db db_return;
+     2940: 1686:	db_return.current_db_state = db_head;
+     2940: 1687:	db_return.snapshot_head = snapshot_head;
+        -: 1688:
+        -: 1689:	//Duplicate input line
+     2940: 1690:	char * sep_line = calloc(strlen(line)+1, 1);
+     2940: 1691:	char * original_line_pointer = sep_line;
+     2940: 1692:	strncpy(sep_line,line,strlen(line));
+        -: 1693:	
+        -: 1694:	//Extract command words
+        -: 1695:	char *cmd1, *cmd2;
+     2940: 1696:	cmd1 = strsep(&sep_line, " ");
+     2940: 1697:	cmd2 = strsep(&sep_line, " ");
+        -: 1698:
+        -: 1699:
+        -: 1700:	//Find command
+     2940: 1701:	if (strcasecmp(cmd1,"HELP") == 0){
+        -: 1702:		
+       13: 1703:		printf("%s",HELP);
+       13: 1704:        free(original_line_pointer);
+        -: 1705:
+       13: 1706:		return db_return;
+        -: 1707:
+     2927: 1708:	} else if (strcasecmp(cmd1,"BYE") == 0) {
+        -: 1709:
+      208: 1710:		free(original_line_pointer);
+      208: 1711:		command_bye(snapshot_head, db_head);
+        -: 1712:        
+      208: 1713:		return db_return;
+        -: 1714:
+     2719: 1715:	} else if (strcasecmp(cmd1,"GET") == 0) {
+        -: 1716:		//GET
+        -: 1717:		
+      289: 1718:		free(original_line_pointer);
+      289: 1719:		command_get(line,db_head,true,true);
+        -: 1720:        
+      289: 1721:		return db_return;
+        -: 1722:
+     2430: 1723:	} else if (strcasecmp(cmd1,"DEL") == 0) {
+        -: 1724:		//DEL
+        -: 1725:		
+       64: 1726:		db_return.current_db_state = command_del(line,db_head,true);
+       64: 1727:        free(original_line_pointer);
+        -: 1728:
+       64: 1729:		return db_return;
+        -: 1730:
+     2366: 1731:	} else if (strcasecmp(cmd1,"PURGE") == 0) {
+        -: 1732:		//PURGE
+        -: 1733:
+       96: 1734:		db_return.current_db_state = command_purge(line,db_head,snapshot_head);
+       96: 1735:        free(original_line_pointer);
+        -: 1736:
+       96: 1737:		return db_return;
+        -: 1738:
+     2270: 1739:	} else if (strcasecmp(cmd1,"SET") == 0) {
+        -: 1740:		//SET
+        -: 1741:
+      617: 1742:		command_set(line,db_head);
+      617: 1743:        free(original_line_pointer);
+        -: 1744:
+      617: 1745:		return db_return;
+        -: 1746:
+     1653: 1747:	} else if (strcasecmp(cmd1,"PUSH") == 0) {
+        -: 1748:		//PUSH
+        -: 1749:
+       29: 1750:		command_push(line,db_head);
+       29: 1751:        free(original_line_pointer);
+        -: 1752:
+       29: 1753:		return db_return;
+        -: 1754:
+     1624: 1755:	} else if (strcasecmp(cmd1,"APPEND") == 0) {
+        -: 1756:		//APPEND
+        -: 1757:
+       45: 1758:		command_append(line,db_head);
+       45: 1759:        free(original_line_pointer);
+        -: 1760:
+       45: 1761:		return db_return;
+        -: 1762:
+     1579: 1763:	} else if (strcasecmp(cmd1,"PICK") == 0) {
+        -: 1764:		//PICK
+        -: 1765:
+       32: 1766:		command_pick(line,db_head);
+       32: 1767:        free(original_line_pointer);
+        -: 1768:
+       32: 1769:		return db_return;
+        -: 1770:
+     1547: 1771:	} else if (strcasecmp(cmd1,"PLUCK") == 0) {
+        -: 1772:		//PLUCK
+        -: 1773:
+       32: 1774:		command_pluck(line,db_head);
+       32: 1775:        free(original_line_pointer);
+        -: 1776:
+       32: 1777:		return db_return;
+        -: 1778:
+     1515: 1779:	} else if (strcasecmp(cmd1,"POP") == 0) {
+        -: 1780:		//POP
+        -: 1781:
+       38: 1782:		command_pop(line,db_head);
+       38: 1783:        free(original_line_pointer);
+        -: 1784:
+       38: 1785:		return db_return;
+        -: 1786:
+     1477: 1787:	} else if (strcasecmp(cmd1,"DROP") == 0) {
+        -: 1788:		//DROP
+        -: 1789:
+       48: 1790:		db_return.snapshot_head = command_drop(line,snapshot_head,true);
+       48: 1791:        free(original_line_pointer);
+        -: 1792:
+       48: 1793:		return db_return;
+        -: 1794:
+     1429: 1795:	} else if (strcasecmp(cmd1,"ROLLBACK") == 0) {
+        -: 1796:		//ROLLBACK
+        -: 1797:		
+       48: 1798:		db_return.current_db_state = command_checkout(line,db_head,snapshot_head,false);
+       48: 1799:		command_rollback(line,snapshot_head);
+       48: 1800:        free(original_line_pointer);
+        -: 1801:
+       48: 1802:		return db_return;
+        -: 1803:
+     1381: 1804:	} else if (strcasecmp(cmd1,"CHECKOUT") == 0) {
+        -: 1805:		//CHECKOUT
+        -: 1806:		
+      144: 1807:		db_return.current_db_state = command_checkout(line,db_head,snapshot_head,true);
+      144: 1808:        free(original_line_pointer);
+        -: 1809:		
+      144: 1810:		return db_return;
+        -: 1811:	
+     1237: 1812:	} else if (strcasecmp(cmd1,"SNAPSHOT") == 0) {
+        -: 1813:		//SNAPSHOT
+        -: 1814:		
+      176: 1815:		command_snapshot(db_head, snapshot_head);
+      176: 1816:        free(original_line_pointer);
+        -: 1817:		
+      176: 1818:		return db_return;
+        -: 1819:	
+     1061: 1820:	} else if (strcasecmp(cmd1,"MIN") == 0) {
+        -: 1821:		//MIN
+        -: 1822:		
+       53: 1823:		command_min(line,db_head,true);
+       53: 1824:        free(original_line_pointer);
+        -: 1825:		
+       53: 1826:		return db_return;
+        -: 1827:	
+     1008: 1828:	} else if (strcasecmp(cmd1,"MAX") == 0) {
+        -: 1829:		//MAX
+        -: 1830:		
+       37: 1831:		command_max(line,db_head,true);
+       37: 1832:        free(original_line_pointer);
+        -: 1833:		
+       37: 1834:		return db_return;
+        -: 1835:	
+      971: 1836:	} else if (strcasecmp(cmd1,"SUM") == 0) {
+        -: 1837:		//SUM
+        -: 1838:		
+      128: 1839:		command_sum(line,db_head,true);
+      128: 1840:        free(original_line_pointer);
+        -: 1841:		
+      128: 1842:		return db_return;
+        -: 1843:	
+      843: 1844:	} else if (strcasecmp(cmd1,"LEN") == 0) {
+        -: 1845:		//LEN
+        -: 1846:		
+       64: 1847:		command_len(line,db_head,true);
+       64: 1848:        free(original_line_pointer);
+        -: 1849:		
+       64: 1850:		return db_return;
+        -: 1851:	
+      779: 1852:	} else if (strcasecmp(cmd1,"REV") == 0) {
+        -: 1853:		//REV
+        -: 1854:		
+       32: 1855:		command_rev(line,db_head);
+       32: 1856:        free(original_line_pointer);
+        -: 1857:		
+       32: 1858:		return db_return;
+        -: 1859:	
+      747: 1860:	} else if (strcasecmp(cmd1,"UNIQ") == 0) {
+        -: 1861:		//UNIQ
+        -: 1862:		
+       32: 1863:		command_uniq(line,db_head);
+       32: 1864:        free(original_line_pointer);
+        -: 1865:		
+       32: 1866:		return db_return;
+        -: 1867:	
+      715: 1868:	} else if (strcasecmp(cmd1,"SORT") == 0) {
+        -: 1869:		//SORT
+        -: 1870:		
+       32: 1871:		command_sort(line,db_head);
+       32: 1872:        free(original_line_pointer);
+        -: 1873:		
+       32: 1874:		return db_return;
+        -: 1875:	
+      683: 1876:	} else if (strcasecmp(cmd1,"FORWARD") == 0) {
+        -: 1877:		//FORWARD
+        -: 1878:		
+      224: 1879:		command_forward(line,db_head,true);
+      224: 1880:        free(original_line_pointer);
+        -: 1881:		
+      224: 1882:		return db_return;
+        -: 1883:	
+      459: 1884:	} else if (strcasecmp(cmd1,"BACKWARD") == 0) {
+        -: 1885:		//BACKWARD
+        -: 1886:		
+      224: 1887:		command_backward(line,db_head,true);
+      224: 1888:        free(original_line_pointer);
+        -: 1889:		
+      224: 1890:		return db_return;
+        -: 1891:	
+      235: 1892:	} else if (strcasecmp(cmd1,"TYPE") == 0) {
+        -: 1893:		//TYPE
+        -: 1894:		
+       11: 1895:		command_type(line,db_head);
+       11: 1896:        free(original_line_pointer);
+        -: 1897:		
+       11: 1898:		return db_return;
+        -: 1899:	
+      224: 1900:	} else if (strcasecmp(cmd1,"LIST") == 0 && cmd2 != NULL){
+        -: 1901:		
+      224: 1902:		if (strcasecmp(cmd1,"LIST") == 0 && strcasecmp(cmd2,"KEYS") == 0) {
+        -: 1903:			//LIST KEYS
+        -: 1904:			
+       32: 1905:			command_list_keys(db_head);
+       32: 1906:			free(original_line_pointer);
+        -: 1907:			
+       32: 1908:			return db_return;
+        -: 1909:		
+      192: 1910:		} else if (strcasecmp(cmd1,"LIST") == 0 && strcasecmp(cmd2,"ENTRIES") == 0) {
+        -: 1911:			//LIST ENTRIES
+        -: 1912:			
+      112: 1913:			command_list_entries(db_head);
+      112: 1914:			free(original_line_pointer);
+        -: 1915:			
+      112: 1916:			return db_return;
+        -: 1917:		
+       80: 1918:		} else if (strcasecmp(cmd1,"LIST") == 0 && strcasecmp(cmd2,"SNAPSHOTS") == 0) {
+        -: 1919:			//LIST SNAPSHOTS
+        -: 1920:			
+       80: 1921:			command_list_snapshots(snapshot_head);
+       80: 1922:			free(original_line_pointer);
+        -: 1923:			
+       80: 1924:			return db_return;
+        -: 1925:		
+        -: 1926:		}
+    #####: 1927:	} else {
+    #####: 1928:		printf("Invalid command\n\n");
+        -: 1929:
+        -: 1930:	}
+        -: 1931:
+    #####: 1932:    free(original_line_pointer);
+    #####: 1933:	return db_return;
+     2940: 1934:}
+        -: 1935:
+      208: 1936:int main(void) {
+        -: 1937:
+      208: 1938:	entry * db_head = malloc(sizeof(entry));
+      208: 1939:	db_head->is_initialised = false;
+        -: 1940:
+      208: 1941:	snapshot * snapshot_head = malloc(sizeof(snapshot));
+      208: 1942:	snapshot_head->is_initialised = false;
+      208: 1943:	snapshot_head->id = 1;
+        -: 1944:
+        -: 1945:	struct whole_db db;
+      208: 1946:	db.current_db_state = db_head;
+      208: 1947:	db.snapshot_head = snapshot_head;
+        -: 1948:
+        -: 1949:	char line[MAX_LINE];
+        -: 1950:
+     3148: 1951:	while (true) {
+     3148: 1952:		printf("> ");
+        -: 1953:
+     3148: 1954:		if (NULL == fgets(line, MAX_LINE, stdin)) {
+      208: 1955:			printf("\n");
+      208: 1956:			command_bye(db.snapshot_head,db.current_db_state);
+      208: 1957:			return 0;
+        -: 1958:		}
+        -: 1959:		//Get input
+     2940: 1960:		line[strlen(line)-1] = '\0';
+        -: 1961:		//Check command
+     2940: 1962:		db = validate_line(line, db.current_db_state, db.snapshot_head);
+        -: 1963:
+        -: 1964:  	}
+        -: 1965:	return 0;
+        -: 1966:}

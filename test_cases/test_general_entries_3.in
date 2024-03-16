@@ -1,0 +1,16 @@
+set a 1 2 3
+set b a 4 5
+snapshot
+set b 6
+snapshot
+set b a
+get a
+checkout 1
+list entries
+rollback 1
+list entries
+checkout 2
+push b a
+append b a
+pop b
+bye

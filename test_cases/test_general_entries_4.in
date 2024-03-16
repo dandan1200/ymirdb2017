@@ -1,0 +1,35 @@
+set a 1
+set b 2
+set c a b 3
+forward c
+forward b
+forward a
+backward a
+backward b
+backward c
+snapshot
+set c a b b 4
+len c
+sum c
+set b 5
+get c
+list entries
+sum c
+forward c
+forward b
+forward a
+backward a
+backward b
+backward c
+snapshot
+purge b
+purge c
+purge b
+checkout 1
+forward c
+forward b
+forward a
+backward a
+backward b
+backward c
+bye

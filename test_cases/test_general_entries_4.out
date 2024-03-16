@@ -1,0 +1,71 @@
+> ok
+
+> ok
+
+> ok
+
+> a, b
+
+> nil
+
+> nil
+
+> c
+
+> c
+
+> nil
+
+> saved as snapshot 1
+
+> ok
+
+> 4
+
+> 9
+
+> ok
+
+> [a b b 4]
+
+> c [a b b 4]
+b [5]
+a [1]
+
+> 15
+
+> a, b, b
+
+> nil
+
+> nil
+
+> c
+
+> c, c
+
+> nil
+
+> saved as snapshot 2
+
+> not permitted
+
+> ok
+
+> ok
+
+> ok
+
+> no such key
+
+> no such key
+
+> nil
+
+> nil
+
+> no such key
+
+> no such key
+
+> bye

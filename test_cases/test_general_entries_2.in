@@ -1,0 +1,13 @@
+set a 1
+set b 2 a
+set c 3 b
+sum c
+snapshot
+set a 5
+sum c
+snapshot
+checkout 1
+get a
+min c
+max c
+bye

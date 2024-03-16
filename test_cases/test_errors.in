@@ -1,0 +1,32 @@
+list entries
+list keys
+list snapshots
+get a
+drop 1
+rollback 1
+sum a
+len a
+min a
+max a
+push a 4
+append a 3
+forward a
+backward a
+pick a 1
+pluck a 3
+pop a
+del a
+purge a
+sort a
+uniq a
+rev a
+checkout 1
+set a a
+set 1name 3 4 5
+set a b
+set a 1
+set a b
+set b c
+get
+type y
+bye

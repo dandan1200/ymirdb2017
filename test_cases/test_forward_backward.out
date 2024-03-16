@@ -1,0 +1,47 @@
+> ok
+
+> ok
+
+> ok
+
+> ok
+
+> a, b
+
+> a, b
+
+> a
+
+> nil
+
+> nil
+
+> nil
+
+> c, d
+
+> b, c, d
+
+> saved as snapshot 1
+
+> ok
+
+> ok
+
+> ok
+
+> no such key
+
+> ok
+
+> ok
+
+> ok
+
+> d [4 5 b 6]
+b [a 2]
+a [1]
+
+> no such snapshot
+
+> bye

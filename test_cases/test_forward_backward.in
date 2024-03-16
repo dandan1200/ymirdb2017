@@ -1,0 +1,23 @@
+set a 1
+set b a 2
+set c 3 b
+set d 4 5 b 6
+forward d
+forward c
+forward b
+forward a
+backward d
+backward c
+backward b
+backward a
+snapshot
+del c
+purge c
+set d 3
+del c
+purge c
+checkout 1
+drop 1
+list entries
+checkout 1
+bye

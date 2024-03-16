@@ -1,0 +1,10 @@
+set a 5 8 2 4 3
+sort a
+get a
+set b 2 2 3 4
+uniq b
+get b
+set c 3 2 1
+rev c
+get c
+bye

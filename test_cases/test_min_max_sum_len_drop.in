@@ -1,0 +1,13 @@
+set a 1 2 3
+min a
+max a
+sum a
+len a
+snapshot
+set a 3
+snapshot
+list snapshots
+drop 2
+list snapshots
+get a
+bye

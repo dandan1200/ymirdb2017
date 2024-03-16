@@ -1,0 +1,11 @@
+set a 1 2 3
+set b a 4
+len b
+sum b
+min b
+append a 5
+get b
+sum b
+type a
+type b
+bye
